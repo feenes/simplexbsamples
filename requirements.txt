@@ -1,0 +1,6 @@
+# merged requirements off all projects
+crossbar
+https://klaud.teledomic.eu/pypkg/crossbarconnect-0.5.3.tgz
+python_qt_binding
+minibelt
+six

@@ -45,6 +45,12 @@ import threading
 import minibelt
 import crossbarconnect
 
+from autobahn.twisted.wamp import ApplicationRunner
+
+from autobahn.twisted.wamp import ApplicationSession
+
+from twisted.internet.defer import inlineCallbacks
+
 # add path to shared python modules to pythonpath
 minibelt.add_to_pythonpath('../pylib', starting_point=__file__)
 
@@ -63,16 +69,37 @@ from xbdemolib.qt.binding import (
 # -----------------------------------------------------------------------------
 logger = logging.getLogger(__name__)
 
+WS_URI = u"ws://localhost:8080/ws"
+REALM = u"realm1"
+CHAN = "chan1"
+RPC_CHAN = "rpc1"
+
 stop_request = False
+
+class AppSession(ApplicationSession):
+
+    @inlineCallbacks
+    def onJoin(self, details):
+        def cb1(value):
+            print("CB val %r" % value)
+
+        def mysum(value):
+            print("RPC called val %r" % value)
+            if type(value) in [ int, float]:
+                return value * value
+            elif type(value) in [ str, unicode ]:
+                return "**" + value + "**"
+            else:
+                return "UNKNOWN"
+        
+        print("joined %r" % details)
+        yield self.subscribe(cb1, CHAN)
+        yield self.register(mysum, RPC_CHAN)
 
 def start_xb(options):
     """ starts the crossbar.io thread """
-    global stop_request
-    print("that will be XB")
-    while not stop_request:
-        print("XB.")
-        time.sleep(10)
-    print("XB END")
+    runner = ApplicationRunner(url=WS_URI, realm=REALM)
+    runner.run(AppSession)
 
 
 class MyWidget(QtGui.QWidget):
@@ -146,10 +173,13 @@ def main():
     options = parser.parse_args(args)
 
     xb_thrd = threading.Thread(target=start_xb, args=[options])
-    xb_thrd.daemon = True
+    #xb_thrd.daemon = True
     xb_thrd.start()
+
     
     # create QT widgets
+    #time.sleep(4)
+    print("will now create app and widget")
     app = QtGui.QApplication(sys.argv)
     widget = MyWidget()
 
@@ -167,8 +197,12 @@ def main():
                 quit_func=widget.sig_quit.emit)
         cli.run_as_thread(daemon=False)
 
+    #time.sleep(4)
+    print("will now show widget")
     widget.show() 
 
+    #time.sleep(4)
+    print("will now start main loop")
     sys.exit(app.exec_()) # start QT event loop
 
 

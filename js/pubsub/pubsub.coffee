@@ -4,6 +4,7 @@ exports = exports ? this
 ws_uri = "ws://localhost:8080/ws"
 realm = "realm1"
 chan = "chan1"
+console.log("uri = #{ws_uri}")
 
 # globals
 g_session = null
@@ -32,11 +33,10 @@ pub_chan1 = ->
 
 
 
-console.log("uri = #{ws_uri}")
 
 
 setup_connection = ->
-    console.log("setup connection")
+    console.log("!!!!!setup connection")
     get_elements()
     init_elements()
     connection = new autobahn.Connection({url: ws_uri, realm: realm})
@@ -49,6 +49,7 @@ setup_connection = ->
     connection.onopen = (session, details) =>
         console.log("conn.onopen")
         g_session = session
+        console.log("session #{g_session}")
         on_msg = (args) ->
             console.log("on_msg callback #{args}")
             chan1_rslt_elm.textContent = args
@@ -57,7 +58,7 @@ setup_connection = ->
         cstatus_elm.value = "connected to #{ws_uri}"
 
         session.subscribe(chan, on_msg)
-        #console.log("subsed 1")
+        console.log("subsed 1")
         console.log("end of on_open")
     
 

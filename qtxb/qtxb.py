@@ -45,7 +45,6 @@ import threading
 import minibelt
 import crossbarconnect
 
-from autobahn.twisted.wamp import ApplicationRunner
 
 from autobahn.twisted.wamp import ApplicationSession
 
@@ -53,6 +52,8 @@ from twisted.internet.defer import inlineCallbacks
 
 # add path to shared python modules to pythonpath
 minibelt.add_to_pythonpath('../pylib', starting_point=__file__)
+
+from myapprunner import ApplicationRunner
 
 # setup logging if not used as module
 if __name__ == '__main__':
@@ -74,6 +75,17 @@ REALM = u"realm1"
 CHAN = "chan1"
 RPC_CHAN = "rpc1"
 
+PUBLISH_URL = u"http://localhost:8080/publish"
+CALL_URL = u"http://localhost:8080/call"
+LP_URL = u"http://localhost:8080/lp"
+CGI_URL = u"http://localhost:8080/cgi"
+
+app = None
+widget = None
+session = None
+runner = None
+
+
 stop_request = False
 
 class AppSession(ApplicationSession):
@@ -82,6 +94,10 @@ class AppSession(ApplicationSession):
     def onJoin(self, details):
         def cb1(value):
             print("CB val %r" % value)
+            try:
+                widget.sig_subscribe_cb.emit(value)
+            except Exception as exc:
+                print("EXC %r" % exception)
 
         def mysum(value):
             print("RPC called val %r" % value)
@@ -96,7 +112,13 @@ class AppSession(ApplicationSession):
         yield self.subscribe(cb1, CHAN)
         yield self.register(mysum, RPC_CHAN)
 
+    def publisher(self, data):
+        yield self.publish(CHAN, data)
+
+
+
 def start_xb(options):
+    global runner
     """ starts the crossbar.io thread """
     runner = ApplicationRunner(url=WS_URI, realm=REALM)
     runner.run(AppSession)
@@ -111,16 +133,21 @@ class MyWidget(QtGui.QWidget):
     def __init__(self, parent=None):
         super(MyWidget, self).__init__(parent)
         layout = QtGui.QVBoxLayout(self)
+        self.xb_client = crossbarconnect.Client(PUBLISH_URL)
 
         self.inp1 = QtGui.QLineEdit("enter some text here")
         layout.addWidget(self.inp1)
+
+        self.lab1 = QtGui.QLabel('---')
+        layout.addWidget(self.lab1)
+
 
         self.btn1 = QtGui.QPushButton("publish event 1")
         layout.addWidget(self.btn1)
         self.btn1.pressed.connect(self._publish)
 
-        self.inp1 = QtGui.QLineEdit("enter another text here")
-        layout.addWidget(self.inp1)
+        self.inp2 = QtGui.QLineEdit("enter another text here")
+        layout.addWidget(self.inp2)
 
         self.btn2 = QtGui.QPushButton("rpc call")
         layout.addWidget(self.btn2)
@@ -142,6 +169,8 @@ class MyWidget(QtGui.QWidget):
 
     def _publish(self):
         logger.info("shall publish via xb")
+        msg = self.inp1.text()
+        self.xb_client.publish(CHAN, msg)
 
     def _call(self):
         logger.info("will do a blocking XB-RPC call")
@@ -149,6 +178,7 @@ class MyWidget(QtGui.QWidget):
     @QtCore.Slot(str)
     def subscribe_callback(self, value):
         logger.info("handling subscribe callback %r", value)
+        self.lab1.setText(value)
 
     def handle_rpc_call(self):
         logger.info("handling an rpc call")
@@ -168,17 +198,21 @@ def mk_parser():
     
 
 def main():
+    global app
+    global widget
+    global session
+
     args = sys.argv[1:]
     parser = mk_parser()
     options = parser.parse_args(args)
 
     xb_thrd = threading.Thread(target=start_xb, args=[options])
-    #xb_thrd.daemon = True
+    xb_thrd.daemon = True
     xb_thrd.start()
 
     
     # create QT widgets
-    #time.sleep(4)
+    time.sleep(4)
     print("will now create app and widget")
     app = QtGui.QApplication(sys.argv)
     widget = MyWidget()
@@ -191,6 +225,8 @@ def main():
             options=options,
             app=app,
             widget=widget,
+            session=session,
+            runner=runner,
         )
         cli = CLI(options, 
                 namespace=namespace, 
@@ -203,7 +239,9 @@ def main():
 
     #time.sleep(4)
     print("will now start main loop")
-    sys.exit(app.exec_()) # start QT event loop
+    rslt = app.exec_() # start QT event loop
+    app = None
+    sys.exit(rslt) # start QT event loop
 
 
 if __name__ == '__main__':

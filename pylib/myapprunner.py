@@ -111,6 +111,7 @@ class ApplicationRunner(object):
         self.debug_wamp = debug_wamp
         self.debug_app = debug_app
         self.ssl = ssl
+        self.session = None
 
     def run(self, make, start_reactor=True):
         """
@@ -158,6 +159,7 @@ class ApplicationRunner(object):
                     raise
             else:
                 session.debug_app = self.debug_app
+                self.session = session
                 return session
 
         # create a WAMP-over-WebSocket transport client factory

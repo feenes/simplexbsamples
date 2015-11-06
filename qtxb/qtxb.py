@@ -17,7 +17,6 @@
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 #
@@ -41,12 +40,15 @@ import argparse
 import logging
 import time
 import threading
+from functools import partial
 
 import minibelt
 import crossbarconnect
 
 
 from autobahn.twisted.wamp import ApplicationSession
+from twisted.internet import reactor
+from twisted.internet import threads
 
 from twisted.internet.defer import inlineCallbacks
 
@@ -82,14 +84,20 @@ CGI_URL = u"http://localhost:8080/cgi"
 
 app = None
 widget = None
-session = None
 runner = None
 
 
 stop_request = False
 
-class AppSession(ApplicationSession):
+import time
 
+def slow_func(value):
+    print("slow %r" % value)
+    time.sleep(3)
+    print("slow OK")
+    return "==" + str(value)
+
+class AppSession(ApplicationSession):
     @inlineCallbacks
     def onJoin(self, details):
         def cb1(value):
@@ -107,14 +115,30 @@ class AppSession(ApplicationSession):
                 return "**" + value + "**"
             else:
                 return "UNKNOWN"
+
+        def slow_done(rslt):
+            print("SLOW_DONE_CB %r" % rslt)
+
+        def slow_cb(value):
+            #rslt = reactor.callInThread(slow_func, value)
+            #print("RSLT = %r" % rslt)
+            #slow_func(value)
+            d = threads.deferToThread(partial(slow_func, value))
+            d.addCallback(slow_done)
+            
         
         print("joined %r" % details)
         yield self.subscribe(cb1, CHAN)
+        yield self.subscribe(slow_cb, CHAN)
         yield self.register(mysum, RPC_CHAN)
 
-    def publisher(self, data):
-        yield self.publish(CHAN, data)
 
+    @inlineCallbacks
+    def do_publish(self, data):
+        print("do_publish %r" % data)
+        rslt = self.publish(CHAN, data)
+        yield rslt
+        print("pubed %r" % rslt)
 
 
 def start_xb(options):
@@ -163,14 +187,25 @@ class MyWidget(QtGui.QWidget):
 
         logger.info("widget created")
 
+    def _get_session(self):
+        if runner:
+            return runner.session
+        return None
+
     def _quit(self):
         logger.info("will close window")
         self.close()
 
     def _publish(self):
-        logger.info("shall publish via xb")
         msg = self.inp1.text()
-        self.xb_client.publish(CHAN, msg)
+    
+        #logger.info("shall publish via xb connect")
+        #self.xb_client.publish(CHAN, msg)
+
+        logger.info("shall publish via xb connect")
+        session = self._get_session()
+        rslt = reactor.callFromThread(session.do_publish, msg)
+        print("REACTCALLRSLT %r" % rslt)
 
     def _call(self):
         logger.info("will do a blocking XB-RPC call")
@@ -225,7 +260,6 @@ def main():
             options=options,
             app=app,
             widget=widget,
-            session=session,
             runner=runner,
         )
         cli = CLI(options, 
